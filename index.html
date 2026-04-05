@@ -13,7 +13,7 @@
         .app { width: 100%; max-width: 600px; height: 100vh; display: flex; flex-direction: column; background: #111827; overflow: hidden; }
         .header { background: #1f2937; color: white; padding: 16px; text-align: center; font-weight: bold; font-size: 1.3rem; border-bottom: 1px solid #374151; display: flex; justify-content: space-between; align-items: center; }
         .header button { background: #ef4444; border: none; color: white; padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; }
-        .messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+        .messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow-anchor: auto; scroll-behavior: smooth; }
         .message { max-width: 80%; padding: 8px 12px; border-radius: 18px; word-wrap: break-word; font-size: 0.95rem; }
         .message.own { background: #2563eb; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
         .message.other { background: #374151; color: #f3f4f6; align-self: flex-start; border-bottom-left-radius: 4px; }
@@ -131,10 +131,13 @@
             div.appendChild(timeSpan);
             messagesList.appendChild(div);
         }
-        // Принудительная прокрутка вниз после обновления
-        requestAnimationFrame(() => {
-            messagesList.scrollTop = messagesList.scrollHeight;
-        });
+        // Прокрутка к последнему сообщению
+        const lastMsg = messagesList.lastChild;
+        if (lastMsg) {
+            setTimeout(() => {
+                lastMsg.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            }, 100);
+        }
     }
 
     function sendMessage() {
@@ -145,8 +148,13 @@
             uid: currentUser.uid,
             displayName: currentUser.displayName,
             timestamp: Date.now()
-        }).then(() => messageInput.value = '')
-          .catch(err => statusDiv.textContent = 'Ошибка: ' + err.message);
+        }).then(() => {
+            messageInput.value = '';
+            setTimeout(() => {
+                const lastMsg = messagesList.lastChild;
+                if (lastMsg) lastMsg.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            }, 150);
+        }).catch(err => statusDiv.textContent = 'Ошибка: ' + err.message);
     }
 
     function logout() {
@@ -226,5 +234,7 @@
     messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
     logoutBtn.addEventListener('click', logout);
 </script>
+    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+<script>eruda.init();</script>
 </body>
 </html>
