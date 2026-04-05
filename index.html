@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Чат — вход по имени</title>
+    <title>Чат — вход и регистрация</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
@@ -137,15 +137,13 @@
     function sendMessage() {
         const text = messageInput.value.trim();
         if (!text || !currentUser) return;
-
         messagesRef.push({
             text: text,
             uid: currentUser.uid,
             displayName: currentUser.displayName,
             timestamp: Date.now()
-        }).then(() => {
-            messageInput.value = '';
-        }).catch(err => statusDiv.textContent = 'Ошибка: ' + err.message);
+        }).then(() => messageInput.value = '')
+          .catch(err => statusDiv.textContent = 'Ошибка: ' + err.message);
     }
 
     function logout() {
