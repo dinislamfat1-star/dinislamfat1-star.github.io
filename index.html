@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Чат — вход по имени</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0a0f1e; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .app { width: 100%; max-width: 600px; height: 100vh; display: flex; flex-direction: column; background: #111827; overflow: hidden; }
+        .header { background: #1f2937; color: white; padding: 16px; text-align: center; font-weight: bold; font-size: 1.3rem; border-bottom: 1px solid #374151; display: flex; justify-content: space-between; align-items: center; }
+        .header button { background: #ef4444; border: none; color: white; padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; }
+        .messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+        .message { max-width: 80%; padding: 8px 12px; border-radius: 18px; word-wrap: break-word; font-size: 0.95rem; }
+        .message.own { background: #2563eb; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .message.other { background: #374151; color: #f3f4f6; align-self: flex-start; border-bottom-left-radius: 4px; }
+        .message .name { font-size: 0.7rem; font-weight: bold; margin-bottom: 4px; opacity: 0.8; }
+        .message .time { font-size: 0.6rem; text-align: right; margin-top: 4px; opacity: 0.6; }
+        .input-area { display: flex; padding: 12px; background: #1f2937; gap: 8px; border-top: 1px solid #374151; }
+        .input-area input { flex: 1; padding: 10px; border: none; border-radius: 24px; background: #374151; color: white; outline: none; font-size: 1rem; }
+        .input-area button { background: #2563eb; border: none; color: white; width: 44px; border-radius: 44px; font-size: 1.5rem; cursor: pointer; }
+        .auth-box { background: #1f2937; padding: 24px; border-radius: 24px; text-align: center; color: white; margin: 20px; }
+        .auth-box input { width: 100%; padding: 12px; margin: 8px 0; border-radius: 24px; border: none; background: #374151; color: white; text-align: center; font-size: 1rem; }
+        .auth-box button { background: #2563eb; border: none; color: white; padding: 10px 20px; border-radius: 32px; font-size: 1rem; margin: 8px 4px; cursor: pointer; }
+        .auth-box .toggle { background: #4b5563; }
+        .status { text-align: center; padding: 8px; font-size: 0.8rem; color: #9ca3af; }
+    </style>
+</head>
+<body>
+<div class="app">
+    <div class="header">
+        <span>💬 Чат (вход по имени)</span>
+        <button id="logoutBtn" style="display:none;">Выйти</button>
+    </div>
+    <div id="authContainer" class="auth-box">
+        <h2 id="formTitle">Вход</h2>
+        <input type="text" id="username" placeholder="Ваше имя (латиница или кириллица)" autocomplete="off">
+        <input type="password" id="password" placeholder="Пароль">
+        <button id="submitBtn">Войти</button>
+        <button id="toggleBtn" class="toggle">Нет аккаунта? Зарегистрироваться</button>
+        <div id="authError" style="color:#f66; margin-top:8px;"></div>
+    </div>
+    <div id="chatContainer" style="display: none; flex-direction: column; flex:1;">
+        <div class="messages" id="messagesList"></div>
+        <div class="input-area">
+            <input type="text" id="messageInput" placeholder="Сообщение..." autocomplete="off">
+            <button id="sendBtn">➤</button>
+        </div>
+        <div class="status" id="statusText"></div>
+    </div>
+</div>
+
+<script>
+    // ========== ТВОИ КЛЮЧИ FIREBASE (те же) ==========
+    const firebaseConfig = {
+        apiKey: "AIzaSyC94FgGHfX7w8dyMnQxiLBPwI66vYuS2r0",
+        authDomain: "altcloud-24dc3.firebaseapp.com",
+        databaseURL: "https://altcloud-24dc3-default-rtdb.europe-west1.firebasedatabase.app",
+        projectId: "altcloud-24dc3",
+        storageBucket: "altcloud-24dc3.firebasestorage.app",
+        messagingSenderId: "335868243516",
+        appId: "1:335868243516:web:b8ae386ef64ef51b28dd39"
+    };
+    // ================================================
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const database = firebase.database();
+
+    // DOM
+    const authContainer = document.getElementById('authContainer');
+    const chatContainer = document.getElementById('chatContainer');
+    const messagesList = document.getElementById('messagesList');
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const statusDiv = document.getElementById('statusText');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    const submitBtn = document.getElementById('submitBtn');
+    const toggleBtn = document.getElementById('toggleBtn');
+    const formTitle = document.getElementById('formTitle');
+    const authError = document.getElementById('authError');
+
+    let isLogin = true;
+    let currentUser = null;
+    let messagesRef = null;
+
+    // Преобразуем имя в email (добавляем @chat.local)
+    function nameToEmail(name) {
+        return name.trim().toLowerCase() + "@chat.local";
+    }
+
+    // Переключение режима
+    toggleBtn.addEventListener('click', () => {
+        isLogin = !isLogin;
+        if (isLogin) {
+            formTitle.textContent = 'Вход';
+            submitBtn.textContent = 'Войти';
+            toggleBtn.textContent = 'Нет аккаунта? Зарегистрироваться';
+        } else {
+            formTitle.textContent = 'Регистрация';
+            submitBtn.textContent = 'Зарегистрироваться';
+            toggleBtn.textContent = 'Уже есть аккаунт? Войти';
+        }
+        authError.textContent = '';
+    });
+
+    // Отображение сообщений
+    function displayMessages(snapshot) {
+        if (!messagesList) return;
+        messagesList.innerHTML = '';
+        const messages = [];
+        snapshot.forEach(child => {
+            messages.push({ id: child.key, ...child.val() });
+        });
+        messages.sort((a,b) => a.timestamp - b.timestamp);
+        for (let msg of messages) {
+            const div = document.createElement('div');
+            const isOwn = (msg.uid === currentUser?.uid);
+            div.className = 'message ' + (isOwn ? 'own' : 'other');
+            const nameSpan = document.createElement('div');
+            nameSpan.className = 'name';
+            nameSpan.textContent = msg.displayName || msg.username || 'Аноним';
+            const textSpan = document.createElement('div');
+            textSpan.textContent = msg.text;
+            const timeSpan = document.createElement('div');
+            timeSpan.className = 'time';
+            const date = new Date(msg.timestamp);
+            timeSpan.textContent = date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            div.appendChild(nameSpan);
+            div.appendChild(textSpan);
+            div.appendChild(timeSpan);
+            messagesList.appendChild(div);
+        }
+        messagesList.scrollTop = messagesList.scrollHeight;
+    }
+
+    // Отправка сообщения
+    function sendMessage() {
+        const text = messageInput.value.trim();
+        if (!text || !currentUser) return;
+        messagesRef.push({
+            text: text,
+            uid: currentUser.uid,
+            displayName: currentUser.displayName || currentUser.email.replace("@chat.local", ""),
+            timestamp: Date.now()
+        }).then(() => {
+            messageInput.value = '';
+        }).catch(err => {
+            statusDiv.textContent = 'Ошибка: ' + err.message;
+        });
+    }
+
+    // Выход
+    function logout() {
+        auth.signOut().then(() => window.location.reload());
+    }
+
+    // Обработка отправки
+    submitBtn.addEventListener('click', async () => {
+        const rawName = usernameInput.value.trim();
+        const password = passwordInput.value;
+        authError.textContent = '';
+
+        if (!rawName || !password) {
+            authError.textContent = 'Заполните имя и пароль';
+            return;
+        }
+
+        const email = nameToEmail(rawName);
+
+        if (!isLogin) {
+            // Регистрация
+            try {
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                // Устанавливаем отображаемое имя (оригинальное, с учётом регистра)
+                await userCredential.user.updateProfile({ displayName: rawName });
+                await userCredential.user.reload();
+                // Вход произойдёт автоматически
+            } catch (err) {
+                if (err.code === 'auth/email-already-in-use') {
+                    authError.textContent = 'Это имя уже занято. Попробуйте другое.';
+                } else {
+                    authError.textContent = err.message;
+                }
+            }
+        } else {
+            // Вход
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+            } catch (err) {
+                if (err.code === 'auth/user-not-found') {
+                    authError.textContent = 'Пользователь не найден. Зарегистрируйтесь.';
+                } else if (err.code === 'auth/wrong-password') {
+                    authError.textContent = 'Неверный пароль.';
+                } else {
+                    authError.textContent = err.message;
+                }
+            }
+        }
+    });
+
+    // Слушатель состояния входа
+    auth.onAuthStateChanged((user) => {
+        if (user) {
+            currentUser = user;
+            // Если по какой-то причине displayName не установлен (старый аккаунт)
+            if (!user.displayName) {
+                const nameFromEmail = user.email.replace("@chat.local", "");
+                user.updateProfile({ displayName: nameFromEmail });
+            }
+            authContainer.style.display = 'none';
+            chatContainer.style.display = 'flex';
+            logoutBtn.style.display = 'block';
+            statusDiv.textContent = `Вы вошли как ${user.displayName}`;
+            if (!messagesRef) {
+                messagesRef = database.ref('messages');
+                messagesRef.on('value', displayMessages);
+            }
+        } else {
+            currentUser = null;
+            authContainer.style.display = 'block';
+            chatContainer.style.display = 'none';
+            logoutBtn.style.display = 'none';
+            statusDiv.textContent = '';
+            if (messagesRef) {
+                messagesRef.off();
+                messagesRef = null;
+            }
+            if (messagesList) messagesList.innerHTML = '';
+        }
+    });
+
+    sendBtn.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendMessage();
+    });
+    logoutBtn.addEventListener('click', logout);
+</script>
+</body>
+</html>
