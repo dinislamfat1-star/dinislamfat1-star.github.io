@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Чат с уведомлениями</title>
+    <title>Чат — вход по имени</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
@@ -34,7 +34,7 @@
 <body>
 <div class="app">
     <div class="header">
-        <span>💬 Чат с пушами</span>
+        <span>💬 Чат</span>
         <button id="logoutBtn" style="display:none;">Выйти</button>
     </div>
     <div id="authContainer" class="auth-container">
@@ -134,41 +134,6 @@
         messagesList.scrollTop = messagesList.scrollHeight;
     }
 
-    function sendPushNotification(messageText, senderName) {
-        if (!currentUser) return;
-        const usersRef = firebase.database().ref('users');
-        usersRef.once('value', (snapshot) => {
-            const tokens = [];
-            snapshot.forEach((userSnapshot) => {
-                if (userSnapshot.key !== currentUser.uid) {
-                    const fcmTokens = userSnapshot.child('fcmTokens');
-                    if (fcmTokens.exists()) {
-                        fcmTokens.forEach((tokenSnapshot) => {
-                            tokens.push(tokenSnapshot.val());
-                        });
-                    }
-                }
-            });
-            if (tokens.length === 0) return;
-            fetch('https://fcm.googleapis.com/fcm/send', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'key=vs6eiAo-ndGANAUsuj8X-QdIIa258RNIy8Y_58r8DVs' // ваш серверный ключ
-                },
-                body: JSON.stringify({
-                    registration_ids: tokens,
-                    notification: {
-                        title: senderName,
-                        body: messageText,
-                        icon: '/favicon.ico',
-                        click_action: window.location.href
-                    }
-                })
-            }).catch(err => console.error('Ошибка отправки пуша:', err));
-        }).catch(err => console.error('Ошибка чтения токенов:', err));
-    }
-
     function sendMessage() {
         const text = messageInput.value.trim();
         if (!text || !currentUser) return;
@@ -180,7 +145,6 @@
             timestamp: Date.now()
         }).then(() => {
             messageInput.value = '';
-            sendPushNotification(text, currentUser.displayName);
         }).catch(err => statusDiv.textContent = 'Ошибка: ' + err.message);
     }
 
@@ -261,45 +225,5 @@
     messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
     logoutBtn.addEventListener('click', logout);
 </script>
-
-<!-- Firebase Messaging (уведомления) -->
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js"></script>
-<script>
-    // Проверяем, что Notification API доступен (только в браузере)
-    if (typeof Notification !== 'undefined') {
-        const messaging = firebase.messaging();
-
-        function requestPermissionAndGetToken() {
-            Notification.requestPermission().then((permission) => {
-                if (permission === 'granted') {
-                    const vapidKey = 'BNZlj2LFTtijpDw0Z47dQ_z-D2sQVS7D2kvXdxwHr1TAJOD1SYOtz3lEpCuleGwClBZfZYmXuVpZ7uLrGGEulVo';
-                    messaging.getToken({ vapidKey: vapidKey }).then((token) => {
-                        if (token) {
-                            console.log('Токен устройства:', token);
-                            saveToken(token);
-                        }
-                    }).catch(err => console.log('Ошибка получения токена:', err));
-                }
-            });
-        }
-
-        function saveToken(token) {
-            const user = firebase.auth().currentUser;
-            if (user) {
-                firebase.database().ref('users/' + user.uid + '/fcmTokens').push(token);
-            }
-        }
-
-        firebase.auth().onAuthStateChanged((user) => {
-            if (user) {
-                requestPermissionAndGetToken();
-            }
-        });
-    } else {
-        console.warn('Notification API не поддерживается в этом окружении');
-    }
-</script>
-    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-<script>eruda.init();</script>
 </body>
 </html>
