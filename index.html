@@ -135,24 +135,26 @@
     }
 
     function sendPushNotification(messageText, senderName) {
+        if (!currentUser) return;
         const usersRef = firebase.database().ref('users');
         usersRef.once('value', (snapshot) => {
             const tokens = [];
             snapshot.forEach((userSnapshot) => {
                 if (userSnapshot.key !== currentUser.uid) {
                     const fcmTokens = userSnapshot.child('fcmTokens');
-                    fcmTokens.forEach((tokenSnapshot) => {
-                        tokens.push(tokenSnapshot.val());
-                    });
+                    if (fcmTokens.exists()) {
+                        fcmTokens.forEach((tokenSnapshot) => {
+                            tokens.push(tokenSnapshot.val());
+                        });
+                    }
                 }
             });
             if (tokens.length === 0) return;
-
             fetch('https://fcm.googleapis.com/fcm/send', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': 'key=vs6eiAo-ndGANAUsuj8X-QdIIa258RNIy8Y_58r8DVs'
+                    'Authorization': 'key=vs6eiAo-ndGANAUsuj8X-QdIIa258RNIy8Y_58r8DVs' // ваш серверный ключ
                 },
                 body: JSON.stringify({
                     registration_ids: tokens,
@@ -164,7 +166,7 @@
                     }
                 })
             }).catch(err => console.error('Ошибка отправки пуша:', err));
-        });
+        }).catch(err => console.error('Ошибка чтения токенов:', err));
     }
 
     function sendMessage() {
@@ -263,34 +265,39 @@
 <!-- Firebase Messaging (уведомления) -->
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js"></script>
 <script>
-    const messaging = firebase.messaging();
+    // Проверяем, что Notification API доступен (только в браузере)
+    if (typeof Notification !== 'undefined') {
+        const messaging = firebase.messaging();
 
-    function requestPermissionAndGetToken() {
-        Notification.requestPermission().then((permission) => {
-            if (permission === 'granted') {
-                const vapidKey = 'BNZlj2LFTtijpDw0Z47dQ_z-D2sQVS7D2kvXdxwHr1TAJOD1SYOtz3lEpCuleGwClBZfZYmXuVpZ7uLrGGEulVo';
-                messaging.getToken({ vapidKey: vapidKey }).then((token) => {
-                    if (token) {
-                        console.log('Токен устройства:', token);
-                        saveToken(token);
-                    }
-                }).catch(err => console.log('Ошибка получения токена:', err));
+        function requestPermissionAndGetToken() {
+            Notification.requestPermission().then((permission) => {
+                if (permission === 'granted') {
+                    const vapidKey = 'BNZlj2LFTtijpDw0Z47dQ_z-D2sQVS7D2kvXdxwHr1TAJOD1SYOtz3lEpCuleGwClBZfZYmXuVpZ7uLrGGEulVo';
+                    messaging.getToken({ vapidKey: vapidKey }).then((token) => {
+                        if (token) {
+                            console.log('Токен устройства:', token);
+                            saveToken(token);
+                        }
+                    }).catch(err => console.log('Ошибка получения токена:', err));
+                }
+            });
+        }
+
+        function saveToken(token) {
+            const user = firebase.auth().currentUser;
+            if (user) {
+                firebase.database().ref('users/' + user.uid + '/fcmTokens').push(token);
+            }
+        }
+
+        firebase.auth().onAuthStateChanged((user) => {
+            if (user) {
+                requestPermissionAndGetToken();
             }
         });
+    } else {
+        console.warn('Notification API не поддерживается в этом окружении');
     }
-
-    function saveToken(token) {
-        const user = firebase.auth().currentUser;
-        if (user) {
-            firebase.database().ref('users/' + user.uid + '/fcmTokens').push(token);
-        }
-    }
-
-    firebase.auth().onAuthStateChanged((user) => {
-        if (user) {
-            requestPermissionAndGetToken();
-        }
-    });
 </script>
     <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
 <script>eruda.init();</script>
