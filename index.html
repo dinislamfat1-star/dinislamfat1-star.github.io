@@ -241,5 +241,37 @@
     });
     logoutBtn.addEventListener('click', logout);
 </script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js"></script>
+<script>
+    const messaging = firebase.messaging();
+
+    function requestPermissionAndGetToken() {
+        Notification.requestPermission().then((permission) => {
+            if (permission === 'granted') {
+                // Твой VAPID-ключ уже вставлен
+                const vapidKey = 'BNZlj2LFTtijpDw0Z47dQ_z-D2sQVS7D2kvXdxwHr1TAJOD1SYOtz3lEpCuleGwClBZfZYmXuVpZ7uLrGGEulVo';
+                messaging.getToken({ vapidKey: vapidKey }).then((token) => {
+                    if (token) {
+                        console.log('Токен устройства:', token);
+                        saveToken(token);
+                    }
+                }).catch(err => console.log('Ошибка получения токена:', err));
+            }
+        });
+    }
+
+    function saveToken(token) {
+        const user = firebase.auth().currentUser;
+        if (user) {
+            firebase.database().ref('users/' + user.uid + '/fcmTokens').push(token);
+        }
+    }
+
+    firebase.auth().onAuthStateChanged((user) => {
+        if (user) {
+            requestPermissionAndGetToken();
+        }
+    });
+</script>
 </body>
 </html>
